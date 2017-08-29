@@ -1,0 +1,284 @@
+---
+title: "Kaggle House Prices"
+author: "Brian Detweiler"
+date: "August 22, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(FFTrees)
+library(pls)
+library(glmnet)
+library(tidyverse)
+library(gam)
+```
+
+## Loading Data
+
+```{r}
+set.seed(8675309)
+train <- read.csv('data/train.csv')
+dat <- train
+actual.test <- read.csv('data/test.csv')
+```
+
+```{r}
+```
+
+We have 19 columns with missing values. We'll need to handle those NAs to make this data easier to deal with.
+
+```{r}
+
+quantify_categorical <- function(x) {
+    # NA - Non-Existent/Terrible/etc - 0
+    x[x == 'NA'] <- 0
+    # Po - Poor - 1
+    x[x == 'Po'] <- 1
+    # Fa - Fair - 2
+    x[x == 'Fa'] <- 2
+    # TA - Typical/Average - 3
+    x[x == 'TA'] <- 3
+    # Gd - Good - 4
+    x[x == 'Gd'] <- 4
+    # Ex - Excellent - 5
+    x[x == 'Ex'] <- 5
+    # Su - Superior - 6
+    x[x == 'Su'] <- 6
+    return(as.numeric(x))
+}
+
+# 
+munge <- function(dat) {
+    
+    dat$MSZoning <- as.numeric(dat$MSZoning)
+  
+    dat$LotFrontage[which(is.na(dat$LotFrontage))] <- 0
+    
+    dat$LotArea <- dat$LotArea
+  
+    dat$Street <- as.numeric(dat$Street) 
+
+    dat$Alley <- as.numeric(dat$Alley) 
+    dat$Alley[which(is.na(dat$Alley))] <- 0
+
+    dat$LotShape <- as.numeric(dat$LotShape)
+       
+    dat$LandContour <- as.numeric(dat$LandContour)
+    
+    dat$Utilities <- as.numeric(dat$Utilities)
+	
+    dat$LotConfig <- as.numeric(dat$LotConfig)
+	
+    dat$LandSlope <- as.numeric(dat$LandSlope)
+	
+    dat$Neighborhood <- as.numeric(dat$Neighborhood)
+			
+    dat$Condition1 <- as.numeric(dat$Condition1)
+    
+    dat$Condition2 <- as.numeric(dat$Condition2)
+	
+    dat$BldgType <- as.numeric(dat$BldgType)
+	
+    dat$HouseStyle <- as.numeric(dat$HouseStyle)
+	
+    dat$OverallQual <- as.numeric(dat$OverallQual)
+	
+    dat$OverallCond <- as.numeric(dat$OverallCond)
+    
+    dat$YearBuilt <- as.numeric(dat$YearBuilt)
+
+    dat$YearRemodAdd <- as.numeric(dat$YearRemodAdd)
+
+    dat$RoofStyle <- as.numeric(dat$RoofStyle)
+		
+    dat$RoofMatl <- as.numeric(dat$RoofMatl)
+		
+    dat$Exterior1st <- as.numeric(dat$Exterior1st)
+	
+    dat$Exterior2nd <- as.numeric(dat$Exterior2nd)
+	
+    dat$MasVnrType <- as.numeric(dat$MasVnrType)
+    dat$MasVnrType[which(is.na(dat$MasVnrType))] <- 0
+    
+    dat$MasVnrArea <- as.numeric(dat$MasVnrArea)
+    dat$MasVnrArea[which(is.na(dat$MasVnrArea))] <- 0
+	
+    dat$ExterQual <- as.numeric(dat$ExterQual)
+		
+    dat$ExterCond <- as.numeric(dat$ExterCond)
+		
+    dat$Foundation <- as.numeric(dat$Foundation)
+		
+    dat$BsmtQual <- as.numeric(dat$BsmtQual)
+    dat$BsmtQual[which(is.na(dat$BsmtQual))] <- 0
+    
+    dat$BsmtCond <- as.numeric(dat$BsmtCond)		
+    dat$BsmtCond[which(is.na(dat$BsmtCond))] <- 0
+	
+    dat$BsmtExposure <- as.numeric(dat$BsmtExposure)		
+    dat$BsmtExposure[which(is.na(dat$BsmtExposure))] <- 0
+
+    dat$BsmtFinType1 <- as.numeric(dat$BsmtFinType1)
+    dat$BsmtFinType1[which(is.na(dat$BsmtFinType1))] <- 0
+    
+    dat$BsmtFinSF1 <- as.numeric(dat$BsmtFinSF1)
+
+    dat$BsmtFinType2 <- as.numeric(dat$BsmtFinType2)
+    dat$BsmtFinType2[which(is.na(dat$BsmtFinType2))] <- 0
+    
+    dat$BsmtFinSF2 <- as.numeric(dat$BsmtFinSF2)
+    
+    dat$BsmtUnfSF <- as.numeric(dat$BsmtUnfSF)
+
+    dat$TotalBsmtSF <- as.numeric(dat$TotalBsmtSF)
+
+    dat$Heating <- as.numeric(dat$Heating)
+	
+    dat$HeatingQC <- as.numeric(dat$HeatingQC)
+		
+    dat$CentralAir <- as.numeric(dat$CentralAir)
+		
+    dat$Electrical <- as.numeric(dat$Electrical)
+    dat$Electrical[which(is.na(dat$Electrical))] <- 0
+	
+    dat$X1stFlrSF <- as.numeric(dat$X1stFlrSF)
+    
+    dat$X2stFlrSF <- as.numeric(dat$X2ndFlrSF)
+ 
+    dat$LowQualFinSF <- as.numeric(dat$LowQualFinSF)
+
+    dat$GrLivArea <- as.numeric(dat$GrLivArea)
+
+    dat$BsmtFullBath <- as.numeric(dat$BsmtFullBath)
+
+    dat$BsmtHalfBath <- as.numeric(dat$BsmtHalfBath)
+    
+    dat$BsmtFullBath <- as.numeric(dat$BsmtFullBath)
+
+    dat$HalfBath <- as.numeric(dat$HalfBath)
+
+    dat$BedroomAbvGr <- as.numeric(dat$BedroomAbvGr)
+
+    dat$KitchenAbvGr <- as.numeric(dat$KitchenAbvGr)
+
+    dat$KitchenQual <- as.numeric(dat$KitchenQual)
+
+    dat$TotRmsAbvGrd <- as.numeric(dat$TotRmsAbvGrd)
+       	
+    dat$Functional <- as.numeric(dat$Functional)
+
+    dat$Fireplaces <- as.numeric(dat$Fireplaces)
+		
+    dat$FireplaceQu <- as.numeric(dat$FireplaceQu)
+    dat$FireplaceQu[which(is.na(dat$FireplaceQu))] <- 0
+
+    dat$GarageType <- as.numeric(dat$GarageType)
+    dat$GarageType[which(is.na(dat$GarageType))] <- 0
+		
+    dat$GarageYrBlt <- as.numeric(dat$GarageYrBlt)
+    dat$GarageYrBlt[which(is.na(dat$GarageYrBlt))] <- 0
+		
+    dat$GarageFinish <- as.numeric(dat$GarageFinish)
+    dat$GarageFinish[which(is.na(dat$GarageFinish))] <- 0
+		
+    dat$GarageCars <- as.numeric(dat$GarageCars)
+		
+    dat$GarageArea <- as.numeric(dat$GarageArea)
+
+    dat$GarageQual <- as.numeric(dat$GarageQual)
+    dat$GarageQual[which(is.na(dat$GarageQual))] <- 0
+
+    dat$GarageCond <- as.numeric(dat$GarageCond)
+    dat$GarageCond[which(is.na(dat$GarageCond))] <- 0
+		
+    dat$PavedDrive <- as.numeric(dat$PavedDrive)
+		
+    dat$WoodDeckSF <- as.numeric(dat$WoodDeckSF)
+		
+    dat$OpenPorchSF <- as.numeric(dat$OpenPorchSF)
+
+    dat$EnclosedPorch <- as.numeric(dat$EnclosedPorch)
+
+    dat$X3SsnPorch <- as.numeric(dat$X3SsnPorch)
+
+    dat$ScreenPorch <- as.numeric(dat$ScreenPorch)
+
+    dat$PoolArea <- as.numeric(dat$PoolArea)
+
+    dat$PoolQC <- as.numeric(dat$PoolQC)
+    dat$PoolQC[which(is.na(dat$PoolQC))] <- 0
+
+    dat$Fence <- as.numeric(dat$Fence)
+    dat$Fence[which(is.na(dat$Fence))] <- 0
+		
+    dat$MiscFeature <- as.numeric(dat$MiscFeature)
+    dat$MiscFeature[which(is.na(dat$MiscFeature))] <- 0
+	
+    dat$MiscVal <- as.numeric(dat$MiscVal)
+		
+    dat$MoSold <- as.numeric(dat$MoSold)
+
+    dat$YrSold <- as.numeric(dat$YrSold)
+
+    dat$SaleType <- as.numeric(dat$SaleType)
+
+    dat$SaleCondition <- as.numeric(dat$SaleCondition)
+    return(dat)
+}
+
+dat <- munge(dat)
+
+x <- model.matrix(SalePrice~., dat)
+y <- dat$SalePrice
+grid <- 10^seq(10, -2, length=100)
+
+train <- sample(1:nrow(x), nrow(x)/2)
+test <- (-train)
+y.test <- y[test]
+
+ridge.mod <- glmnet(x[train,], y[train], alpha=0, lambda=grid, thresh=1e-12)
+
+ridge.pred <- predict(ridge.mod, s=4, newx=x[test,])
+
+# MSE
+mean((ridge.pred-y.test)^2)
+
+ridge.pred <- predict(ridge.mod, s=0, newx=x[test,], exact=T)
+
+# MSE
+mean((ridge.pred - y.test)^2)
+
+cv.out <- cv.glmnet(x[train,], y[train], alpha=0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+ridge.pred <- predict(ridge.mod, s=bestlam, newx=x[test,], exact=T)
+mean((ridge.pred - y.test)^2)
+
+# Lasso
+cv.out <- cv.glmnet(x[train,], y[train], alpha=1, lambda=grid)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+lasso.mod <- glmnet(x[train,], y[train], alpha=1, lambda=grid, thresh=1e-12)
+lasso.pred <- predict(lasso.mod, s=bestlam, newx=x[test,], exact=T)
+mean((lasso.pred - y.test)^2)
+sqrt(mean((lasso.pred - y.test)^2))
+
+test.x <- model.matrix(actual.test)
+lasso.pred <- predict(lasso.mod, s=bestlam, newx=x[test,], exact=T)
+
+plot(y.test, (sqrt((lasso.pred - y.test)^2)))
+lasso.pred
+y.test
+mean((lasso.pred - y.test)^2)
+sqrt(mean((lasso.pred - y.test)^2))
+
+```
+
+# GAM
+
+```{r}
+
+```
